@@ -1,0 +1,33 @@
+{
+  "name": "chainweave-infrastructure",
+  "version": "0.1.0",
+  "description": "ChainWeave GCP infrastructure as code with Pulumi",
+  "main": "index.ts",
+  "scripts": {
+    "build": "tsc",
+    "start": "pulumi up",
+    "deploy": "pulumi up --yes",
+    "destroy": "pulumi destroy --yes",
+    "preview": "pulumi preview",
+    "refresh": "pulumi refresh",
+    "lint": "eslint --ext .ts .",
+    "format": "prettier --write '**/*.{ts,js,json}'",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pulumi/pulumi": "^3.90.0",
+    "@pulumi/gcp": "^7.5.0",
+    "@pulumi/docker": "^4.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.8.0",
+    "@typescript-eslint/eslint-plugin": "^6.9.0",
+    "@typescript-eslint/parser": "^6.9.0",
+    "eslint": "^8.52.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

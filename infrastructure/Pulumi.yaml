@@ -1,0 +1,19 @@
+name: chainweave
+runtime:
+  name: nodejs
+  options:
+    typescript: true
+description: ChainWeave Solana NFT Analytics Infrastructure
+template:
+  config:
+    gcp:project:
+      description: The Google Cloud project to deploy into
+    gcp:region:
+      description: The Google Cloud region
+      default: us-central1
+    helius:apiKey:
+      description: Helius API key for Solana blockchain data
+      secret: true
+    environment:
+      description: Environment (dev, staging, prod)
+      default: dev

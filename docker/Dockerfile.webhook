@@ -1,0 +1,38 @@
+# ChainWeave Webhook Receiver Dockerfile
+FROM python:3.11-slim
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app/backend/src
+
+# Set work directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install Python dependencies
+COPY backend/requirements.txt /app/backend/
+RUN pip install --no-cache-dir -r backend/requirements.txt
+
+# Copy application code
+COPY backend/ /app/backend/
+
+# Create non-root user
+RUN useradd -m -u 1000 chainweave && chown -R chainweave:chainweave /app
+USER chainweave
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Run the webhook receiver
+CMD ["python", "-c", "import sys; sys.path.append('/app/backend/src'); from services.webhook_receiver import create_webhook_receiver; import asyncio; import os; receiver = create_webhook_receiver(os.environ['PROJECT_ID'], os.environ['DATASET_ID'], os.environ.get('WEBHOOK_SECRET'), os.environ.get('REDIS_URL')); asyncio.run(receiver.start_server())"]

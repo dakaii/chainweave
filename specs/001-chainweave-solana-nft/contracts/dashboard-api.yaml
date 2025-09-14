@@ -1,0 +1,540 @@
+openapi: 3.0.3
+info:
+  title: ChainWeave Dashboard API
+  description: Analytics API for Solana NFT data visualization and insights
+  version: 0.1.0
+  contact:
+    name: ChainWeave Dashboard
+servers:
+  - url: https://chainweave-dashboard.run.app/api
+    description: Production Streamlit app API
+  - url: http://localhost:8501/api
+    description: Local development server
+
+paths:
+  /collections:
+    get:
+      summary: List NFT collections with summary metrics
+      description: |
+        Returns paginated list of tracked NFT collections with basic metrics
+        like floor price, total volume, and holder count.
+      operationId: listCollections
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: sort_by
+          in: query
+          schema:
+            type: string
+            enum: [total_volume, floor_price, created_at, holder_count]
+            default: total_volume
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: List of collections
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CollectionListResponse'
+
+  /collections/{collection_id}:
+    get:
+      summary: Get detailed collection analytics
+      description: |
+        Returns comprehensive analytics for a specific NFT collection including
+        price history, holder distribution, and trading metrics.
+      operationId: getCollectionDetails
+      parameters:
+        - name: collection_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Collection identifier
+      responses:
+        '200':
+          description: Collection details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CollectionDetails'
+        '404':
+          description: Collection not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /collections/{collection_id}/heatmap:
+    get:
+      summary: Get collection ownership heatmap data
+      description: |
+        Returns data for visualizing NFT ownership patterns within a collection,
+        showing trading frequency and holding duration patterns.
+      operationId: getCollectionHeatmap
+      parameters:
+        - name: collection_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Heatmap visualization data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HeatmapData'
+
+  /whales:
+    get:
+      summary: List whale wallets and recent activity
+      description: |
+        Returns list of high-volume trading wallets with recent transaction
+        activity and portfolio metrics.
+      operationId: listWhales
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - name: activity_days
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 90
+            default: 7
+          description: Only include whales active in last N days
+      responses:
+        '200':
+          description: List of whale wallets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WhaleListResponse'
+
+  /wallets/{wallet_address}:
+    get:
+      summary: Get wallet profile and analytics
+      description: |
+        Returns detailed profile for a specific wallet including trading history,
+        current holdings, and calculated performance metrics.
+      operationId: getWalletProfile
+      parameters:
+        - name: wallet_address
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[1-9A-HJ-NP-Za-km-z]{43,44}$'
+      responses:
+        '200':
+          description: Wallet profile details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletProfile'
+        '404':
+          description: Wallet not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /attributes/analysis:
+    post:
+      summary: Analyze attribute-price correlations
+      description: |
+        Calculates price correlations for NFT attributes within specified
+        collections, showing which traits command premium prices.
+      operationId: analyzeAttributes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttributeAnalysisRequest'
+      responses:
+        '200':
+          description: Attribute analysis results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttributeAnalysisResponse'
+
+components:
+  schemas:
+    CollectionListResponse:
+      type: object
+      properties:
+        collections:
+          type: array
+          items:
+            $ref: '#/components/schemas/CollectionSummary'
+        total_count:
+          type: integer
+        pagination:
+          $ref: '#/components/schemas/PaginationInfo'
+
+    CollectionSummary:
+      type: object
+      properties:
+        collection_id:
+          type: string
+        name:
+          type: string
+        symbol:
+          type: string
+        total_supply:
+          type: integer
+        floor_price:
+          type: number
+          format: double
+        total_volume:
+          type: number
+          format: double
+        holder_count:
+          type: integer
+        avg_price_24h:
+          type: number
+          format: double
+        volume_24h:
+          type: number
+          format: double
+
+    CollectionDetails:
+      type: object
+      properties:
+        collection_id:
+          type: string
+        name:
+          type: string
+        symbol:
+          type: string
+        creator_address:
+          type: string
+        total_supply:
+          type: integer
+        floor_price:
+          type: number
+          format: double
+        total_volume:
+          type: number
+          format: double
+        holder_count:
+          type: integer
+        price_history:
+          type: array
+          items:
+            $ref: '#/components/schemas/PricePoint'
+        top_holders:
+          type: array
+          items:
+            $ref: '#/components/schemas/TopHolder'
+        recent_sales:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecentSale'
+
+    HeatmapData:
+      type: object
+      properties:
+        collection_id:
+          type: string
+        nfts:
+          type: array
+          items:
+            $ref: '#/components/schemas/NFTHeatmapPoint'
+        color_scale:
+          type: object
+          properties:
+            min_hold_days:
+              type: integer
+            max_hold_days:
+              type: integer
+            color_mapping:
+              type: object
+              additionalProperties:
+                type: string
+
+    WhaleListResponse:
+      type: object
+      properties:
+        whales:
+          type: array
+          items:
+            $ref: '#/components/schemas/WhaleSummary'
+        activity_period_days:
+          type: integer
+        total_count:
+          type: integer
+
+    WalletProfile:
+      type: object
+      properties:
+        wallet_address:
+          type: string
+        total_nfts_owned:
+          type: integer
+        total_volume_traded:
+          type: number
+          format: double
+        whale_status:
+          type: boolean
+        first_activity:
+          type: string
+          format: date-time
+        last_activity:
+          type: string
+          format: date-time
+        avg_hold_duration:
+          type: integer
+          description: Average holding period in days
+        collections_active:
+          type: integer
+        profit_loss_sol:
+          type: number
+          format: double
+        recent_transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecentTransaction'
+        current_holdings:
+          type: array
+          items:
+            $ref: '#/components/schemas/WalletHolding'
+
+    AttributeAnalysisRequest:
+      type: object
+      required:
+        - collection_ids
+      properties:
+        collection_ids:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 5
+        time_range_days:
+          type: integer
+          minimum: 7
+          maximum: 365
+          default: 30
+
+    AttributeAnalysisResponse:
+      type: object
+      properties:
+        analysis_date:
+          type: string
+          format: date-time
+        collections:
+          type: array
+          items:
+            $ref: '#/components/schemas/CollectionAttributeAnalysis'
+
+    # Supporting schemas
+    PaginationInfo:
+      type: object
+      properties:
+        limit:
+          type: integer
+        offset:
+          type: integer
+        has_next:
+          type: boolean
+
+    PricePoint:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        floor_price:
+          type: number
+          format: double
+        avg_price:
+          type: number
+          format: double
+        volume:
+          type: number
+          format: double
+
+    TopHolder:
+      type: object
+      properties:
+        wallet_address:
+          type: string
+        nft_count:
+          type: integer
+        estimated_value:
+          type: number
+          format: double
+        whale_status:
+          type: boolean
+
+    RecentSale:
+      type: object
+      properties:
+        mint_address:
+          type: string
+        name:
+          type: string
+        price_sol:
+          type: number
+          format: double
+        buyer:
+          type: string
+        seller:
+          type: string
+        marketplace:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    NFTHeatmapPoint:
+      type: object
+      properties:
+        mint_address:
+          type: string
+        name:
+          type: string
+        current_owner:
+          type: string
+        hold_duration_days:
+          type: integer
+        last_sale_price:
+          type: number
+          format: double
+        rarity_rank:
+          type: integer
+
+    WhaleSummary:
+      type: object
+      properties:
+        wallet_address:
+          type: string
+        total_volume_traded:
+          type: number
+          format: double
+        total_nfts_owned:
+          type: integer
+        last_activity:
+          type: string
+          format: date-time
+        recent_activity_count:
+          type: integer
+
+    RecentTransaction:
+      type: object
+      properties:
+        transaction_signature:
+          type: string
+        event_type:
+          type: string
+          enum: [mint, transfer, sale, burn]
+        mint_address:
+          type: string
+        collection_name:
+          type: string
+        price_sol:
+          type: number
+          format: double
+          nullable: true
+        timestamp:
+          type: string
+          format: date-time
+
+    WalletHolding:
+      type: object
+      properties:
+        mint_address:
+          type: string
+        name:
+          type: string
+        collection_name:
+          type: string
+        acquired_date:
+          type: string
+          format: date
+        acquisition_price:
+          type: number
+          format: double
+        current_floor_price:
+          type: number
+          format: double
+        unrealized_pnl:
+          type: number
+          format: double
+
+    CollectionAttributeAnalysis:
+      type: object
+      properties:
+        collection_id:
+          type: string
+        collection_name:
+          type: string
+        attribute_correlations:
+          type: array
+          items:
+            $ref: '#/components/schemas/AttributeCorrelation'
+
+    AttributeCorrelation:
+      type: object
+      properties:
+        trait_type:
+          type: string
+        trait_value:
+          type: string
+        avg_price_premium:
+          type: number
+          format: double
+          description: Premium over floor price as percentage
+        sample_size:
+          type: integer
+        correlation_strength:
+          type: number
+          format: double
+          minimum: -1
+          maximum: 1
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+security: []
+
+tags:
+  - name: Collections
+    description: NFT collection analytics and data
+  - name: Wallets  
+    description: Wallet profiles and trading behavior
+  - name: Analytics
+    description: Advanced analytics and correlations

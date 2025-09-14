@@ -1,0 +1,225 @@
+openapi: 3.0.3
+info:
+  title: ChainWeave Webhook API
+  description: Helius webhook receiver for Solana NFT transaction events
+  version: 0.1.0
+  contact:
+    name: ChainWeave API
+servers:
+  - url: https://chainweave-webhook-service.run.app
+    description: Production Cloud Run service
+  - url: http://localhost:8000
+    description: Local development server
+
+paths:
+  /webhook/helius:
+    post:
+      summary: Receive Helius NFT transaction webhooks
+      description: |
+        Accepts webhook payloads from Helius containing parsed Solana NFT 
+        transaction events (mints, transfers, sales). Validates payload and 
+        publishes to Pub/Sub for processing.
+      operationId: receiveHeliusWebhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HeliusWebhookPayload'
+            examples:
+              nft_mint:
+                summary: NFT Mint Event
+                value:
+                  type: ENHANCED
+                  signature: "5KJp9QjRgFryfbTTv8RtWGGCaYJJ7xBqQGY7FoXbpzSFwWrVvH3K7JX8QgGH1AjSBUL6Vh6Y8N3xAhVkCJ9wGxRr"
+                  timestamp: 1694534400000
+                  slot: 259841234
+                  events:
+                    nft:
+                      nftMint: "8Gv8q3K9FjTb1cH4yWaJsyLxMhD4NnPvQcZg5T6eYfRx"
+                      newOwner: "ByXB7zV4TKa3xxC6PJxEQgm7cZxvXHU9C5qhHdKQN4R4"
+                      price: 1.5
+                      marketplace: "Magic Eden"
+              nft_transfer:
+                summary: NFT Transfer Event  
+                value:
+                  type: ENHANCED
+                  signature: "3MJp8QjRgFryfbTTv8RtWGGCaYJJ7xBqQGY7FoXbpzSFwWrVvH3K7JX8QgGH1AjSBUL6Vh6Y8N3xAhVkCJ9wTxRr"
+                  timestamp: 1694534500000
+                  slot: 259841245
+                  events:
+                    nft:
+                      nftMint: "8Gv8q3K9FjTb1cH4yWaJsyLxMhD4NnPvQcZg5T6eYfRx"
+                      oldOwner: "ByXB7zV4TKa3xxC6PJxEQgm7cZxvXHU9C5qhHdKQN4R4"
+                      newOwner: "9CwD5fX7JHs8RqVbGhTyE3nH4P2vZmKaL6tQsYuMxNpF"
+      responses:
+        '200':
+          description: Webhook received and processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookResponse'
+              examples:
+                success:
+                  value:
+                    status: "received"
+                    message_id: "projects/chainweave/topics/nft-events/messages/12345"
+                    timestamp: "2025-09-08T10:30:00Z"
+        '400':
+          description: Invalid webhook payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                validation_error:
+                  value:
+                    error: "validation_failed"
+                    message: "Missing required field: signature"
+                    details: ["signature is required"]
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /health:
+    get:
+      summary: Health check endpoint
+      description: Returns service health status
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "healthy"
+                  timestamp:
+                    type: string
+                    format: date-time
+                  version:
+                    type: string
+                    example: "0.1.0"
+
+components:
+  schemas:
+    HeliusWebhookPayload:
+      type: object
+      required:
+        - type
+        - signature
+        - timestamp
+        - slot
+        - events
+      properties:
+        type:
+          type: string
+          enum: [ENHANCED, RAW]
+          description: Webhook payload type
+        signature:
+          type: string
+          pattern: '^[1-9A-HJ-NP-Za-km-z]{87,88}$'
+          description: Solana transaction signature
+        timestamp:
+          type: integer
+          format: int64
+          minimum: 1600000000000
+          description: Unix timestamp in milliseconds
+        slot:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Solana slot number
+        events:
+          $ref: '#/components/schemas/TransactionEvents'
+
+    TransactionEvents:
+      type: object
+      properties:
+        nft:
+          $ref: '#/components/schemas/NFTEvent'
+
+    NFTEvent:
+      type: object
+      properties:
+        nftMint:
+          type: string
+          pattern: '^[1-9A-HJ-NP-Za-km-z]{43,44}$'
+          description: NFT mint address
+        oldOwner:
+          type: string
+          pattern: '^[1-9A-HJ-NP-Za-km-z]{43,44}$'
+          description: Previous owner address (null for mint events)
+          nullable: true
+        newOwner:
+          type: string
+          pattern: '^[1-9A-HJ-NP-Za-km-z]{43,44}$'
+          description: New owner address (null for burn events)
+          nullable: true
+        price:
+          type: number
+          format: double
+          minimum: 0
+          description: Transaction price in SOL
+          nullable: true
+        marketplace:
+          type: string
+          description: Marketplace facilitating the transaction
+          nullable: true
+          enum: ["Magic Eden", "OpenSea", "Tensor", "Hadeswap", "Direct Transfer"]
+
+    WebhookResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum: [received, processed, error]
+        message_id:
+          type: string
+          description: Pub/Sub message ID for tracking
+          nullable: true
+        timestamp:
+          type: string
+          format: date-time
+        error:
+          type: string
+          description: Error message if status is error
+          nullable: true
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          description: Error code
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: array
+          items:
+            type: string
+          description: Additional error details
+        timestamp:
+          type: string
+          format: date-time
+
+security: []
+
+tags:
+  - name: Webhooks
+    description: Helius webhook processing endpoints
+  - name: Health
+    description: Service health monitoring

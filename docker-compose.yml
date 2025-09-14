@@ -1,0 +1,144 @@
+version: '3.8'
+
+services:
+  # Redis for caching and queuing
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ChainWeave API Service
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PROJECT_ID=${PROJECT_ID:-chainweave-analytics}
+      - DATASET_ID=${DATASET_ID:-chainweave}
+      - REDIS_URL=redis://redis:6379
+      - HELIUS_API_KEY=${HELIUS_API_KEY}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/gcp-key.json
+    volumes:
+      - ${GOOGLE_APPLICATION_CREDENTIALS}:/app/gcp-key.json:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ChainWeave Dashboard
+  dashboard:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dashboard
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    environment:
+      - PROJECT_ID=${PROJECT_ID:-chainweave-analytics}
+      - DATASET_ID=${DATASET_ID:-chainweave}
+      - REDIS_URL=redis://redis:6379
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/gcp-key.json
+    volumes:
+      - ${GOOGLE_APPLICATION_CREDENTIALS}:/app/gcp-key.json:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Webhook Receiver Service
+  webhook-receiver:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.webhook
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    environment:
+      - PROJECT_ID=${PROJECT_ID:-chainweave-analytics}
+      - DATASET_ID=${DATASET_ID:-chainweave}
+      - REDIS_URL=redis://redis:6379
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/gcp-key.json
+    volumes:
+      - ${GOOGLE_APPLICATION_CREDENTIALS}:/app/gcp-key.json:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Data Processor Service
+  data-processor:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.processor
+    restart: unless-stopped
+    environment:
+      - PROJECT_ID=${PROJECT_ID:-chainweave-analytics}
+      - DATASET_ID=${DATASET_ID:-chainweave}
+      - REDIS_URL=redis://redis:6379
+      - HELIUS_API_KEY=${HELIUS_API_KEY}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/gcp-key.json
+    volumes:
+      - ${GOOGLE_APPLICATION_CREDENTIALS}:/app/gcp-key.json:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.path.append('/app/backend/src'); from services.data_processor import create_data_processor; print('OK')"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - api
+      - dashboard
+      - webhook-receiver
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  default:
+    name: chainweave-network
